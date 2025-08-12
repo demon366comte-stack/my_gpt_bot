@@ -1,38 +1,32 @@
 import os
 import telebot
-import threading
-from flask import Flask
+from flask import Flask, request
 
-# Загружаем токены из переменных окружения
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+bot = telebot.TeleBot(TOKEN)
+APP_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"  # URL твоего приложения на Render
 
-bot = telebot.TeleBot(TELEGRAM_TOKEN)
-
-# Создаём Flask-приложение
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "Bot is running!", 200
+# Обрабатываем команду /start
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+    bot.reply_to(message, "Привет! Я твой бот.")
 
-# Здесь твоя логика бота
-@bot.message_handler(commands=['start'])
-def start_message(message):
-    bot.reply_to(message, "Привет! Я бот и я работаю на Render!")
+# Flask маршрут для приёма данных от Telegram
+@app.route(f"/{TOKEN}", methods=["POST"])
+def receive_update():
+    json_str = request.get_data().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
 
-# Функция для запуска бота
-def run_bot():
-    bot.polling(none_stop=True)
-
-# Функция для запуска Flask
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# Устанавливаем webhook при старте
+@app.before_first_request
+def set_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=APP_URL)
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельном потоке
-    threading.Thread(target=run_bot).start()
-    # Запускаем Flask-сервер
-    run_flask()
-
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
