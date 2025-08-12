@@ -3,17 +3,17 @@ import telebot
 from flask import Flask, request
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-bot = telebot.TeleBot(TOKEN)
-APP_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"  # URL твоего приложения на Render
+APP_URL = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
 
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Обрабатываем команду /start
-@bot.message_handler(commands=["start"])
-def send_welcome(message):
-    bot.reply_to(message, "Привет! Я твой бот.")
+# Ставим webhook при старте приложения
+with app.app_context():
+    bot.remove_webhook()
+    bot.set_webhook(url=APP_URL)
 
-# Flask маршрут для приёма данных от Telegram
+# Обработка входящих апдейтов от Telegram
 @app.route(f"/{TOKEN}", methods=["POST"])
 def receive_update():
     json_str = request.get_data().decode("UTF-8")
@@ -21,12 +21,16 @@ def receive_update():
     bot.process_new_updates([update])
     return "OK", 200
 
-# Устанавливаем webhook при старте
-@app.before_first_request
-def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=APP_URL)
+# Пример команды
+@bot.message_handler(commands=["start"])
+def start_message(message):
+    bot.send_message(message.chat.id, "Привет! Бот работает через Render 🚀")
+
+# Можно добавить любую другую обработку сообщений
+@bot.message_handler(func=lambda m: True)
+def echo_all(message):
+    bot.send_message(message.chat.id, f"Ты написал: {message.text}")
 
 if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
